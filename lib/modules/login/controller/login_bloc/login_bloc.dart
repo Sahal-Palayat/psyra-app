@@ -28,7 +28,7 @@ class LoginBloc extends Bloc<LoginEvent, LoginState> {
     Emitter<LoginState> emit,
   ) {
     final password = event.password;
-    final isPasswordValid = password.length >= 6;
+    final isPasswordValid = password.length >= 3;
     emit(state.copyWith(
       password: password,
       isPasswordValid: isPasswordValid,

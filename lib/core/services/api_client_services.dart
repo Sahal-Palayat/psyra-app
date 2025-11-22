@@ -1,65 +1,177 @@
-/// Dummy API Client Service
-/// This service simulates API calls with delays
-class APIClientServices {
-  // Simulate network delay
-  static Future<void> _delay() async {
-    await Future.delayed(const Duration(seconds: 1));
-  }
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:psyra/constants/api_constants.dart';
 
-  /// Dummy login API
-  /// Returns success if email contains '@' and password length >= 6
+/// API Client Service
+/// Handles all HTTP requests to the backend API
+class APIClientServices {
+  /// Login API
+  /// Makes a POST request to the login endpoint
+  /// Response format: { "status": true, "message": "...", "data": { ... } }
   static Future<Map<String, dynamic>> login({
     required String email,
     required String password,
   }) async {
-    await _delay();
-
-    // Dummy validation
-    if (!email.contains('@') || password.length < 6) {
-      throw Exception('Invalid email or password');
-    }
-
-    // Dummy success response
-    return {
-      'success': true,
-      'token': 'dummy_token_${DateTime.now().millisecondsSinceEpoch}',
-      'user': {
-        'id': '1',
+    try {
+      final url = Uri.parse('${APIConstants.baseUrl}${APIConstants.loginEndpoint}');
+      
+      // Debug: Print the URL being called
+      print('🔵 ========================================');
+      print('🔵 API CALL DETAILS');
+      print('🔵 ========================================');
+      print('🔵 Base URL: ${APIConstants.baseUrl}');
+      print('🔵 Endpoint: ${APIConstants.loginEndpoint}');
+      print('🔵 Full URL: $url');
+      print('🔵 Login Request: email=$email');
+      print('🔵 ========================================');
+      
+      final requestBody = jsonEncode({
         'email': email,
-        'name': email.split('@')[0],
-      },
-    };
+        'password': password,
+      });
+      
+      final response = await http.post(
+        url,
+        headers: APIConstants.headers,
+        body: requestBody,
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw Exception('Request timeout. Please check your internet connection.');
+        },
+      );
+
+      // Debug: Print response details
+      print('🔵 Response Status Code: ${response.statusCode}');
+      print('🔵 Response Body: ${response.body}');
+
+      // Check if response body is empty
+      if (response.body.isEmpty) {
+        throw Exception('Empty response from server. Status code: ${response.statusCode}');
+      }
+
+      // Try to parse JSON
+      Map<String, dynamic> responseData;
+      try {
+        responseData = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (e) {
+        throw Exception('Invalid JSON response: ${response.body}');
+      }
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        // Check if response has status field
+        if (responseData['status'] == true && responseData['data'] != null) {
+          return responseData['data'] as Map<String, dynamic>;
+        } else if (responseData['data'] != null) {
+          // Return data even if status is not explicitly true
+          return responseData['data'] as Map<String, dynamic>;
+        } else {
+          // Fallback: return the whole response if no data wrapper
+          return responseData;
+        }
+      } else {
+        // Handle error response
+        final errorMessage = responseData['message']?.toString() ??
+            responseData['error']?.toString() ??
+            responseData['errors']?.toString() ??
+            'Login failed with status code: ${response.statusCode}';
+        
+        // If 404, provide helpful message about endpoint
+        if (response.statusCode == 404) {
+          print('❌ ========================================');
+          print('❌ ENDPOINT NOT FOUND (404)');
+          print('❌ ========================================');
+          print('❌ Current endpoint: ${APIConstants.loginEndpoint}');
+          print('❌ Full URL tried: $url');
+          print('❌ Please verify the correct endpoint path.');
+          print('❌ Common patterns: /api/login, /api/auth/login, /auth/login');
+          print('❌ ========================================');
+        }
+        
+        throw Exception(errorMessage);
+      }
+    } on http.ClientException catch (e) {
+      print('🔴 Client Exception: $e');
+      throw Exception('Network error. Please check your internet connection. Error: ${e.message}');
+    } on FormatException catch (e) {
+      print('🔴 Format Exception: $e');
+      throw Exception('Invalid response from server: ${e.message}');
+    } catch (e) {
+      print('🔴 Exception: $e');
+      final errorMessage = e.toString().replaceAll('Exception: ', '');
+      throw Exception(errorMessage.isEmpty ? 'An unexpected error occurred' : errorMessage);
+    }
   }
 
-  /// Dummy signup API
-  /// Returns success if email contains '@' and password length >= 6
+  /// Signup API
+  /// Makes a POST request to the signup endpoint
   static Future<Map<String, dynamic>> signup({
     required String email,
     required String password,
     required String name,
   }) async {
-    await _delay();
+    try {
+      final url = Uri.parse('${APIConstants.baseUrl}${APIConstants.signupEndpoint}');
+      
+      final response = await http.post(
+        url,
+        headers: APIConstants.headers,
+        body: jsonEncode({
+          'email': email,
+          'password': password,
+          'name': name,
+        }),
+      );
 
-    // Dummy validation
-    if (!email.contains('@') || password.length < 6 || name.isEmpty) {
-      throw Exception('Invalid input data');
+      final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return responseData;
+      } else {
+        throw Exception(
+          responseData['message']?.toString() ??
+              responseData['error']?.toString() ??
+              'Signup failed',
+        );
+      }
+    } on http.ClientException {
+      throw Exception('Network error. Please check your internet connection.');
+    } on FormatException {
+      throw Exception('Invalid response from server.');
+    } catch (e) {
+      throw Exception(e.toString().replaceAll('Exception: ', ''));
     }
-
-    // Dummy success response
-    return {
-      'success': true,
-      'token': 'dummy_token_${DateTime.now().millisecondsSinceEpoch}',
-      'user': {
-        'id': '1',
-        'email': email,
-        'name': name,
-      },
-    };
   }
 
-  /// Dummy logout API
-  static Future<void> logout() async {
-    await _delay();
-    // Dummy logout - just simulate delay
+  /// Logout API
+  /// Makes a POST request to the logout endpoint
+  static Future<void> logout({String? token}) async {
+    try {
+      final url = Uri.parse('${APIConstants.baseUrl}${APIConstants.logoutEndpoint}');
+      
+      final headers = token != null
+          ? APIConstants.getHeadersWithAuth(token)
+          : APIConstants.headers;
+
+      final response = await http.post(
+        url,
+        headers: headers,
+      );
+
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+        throw Exception(
+          responseData['message']?.toString() ??
+              responseData['error']?.toString() ??
+              'Logout failed',
+        );
+      }
+    } on http.ClientException {
+      throw Exception('Network error. Please check your internet connection.');
+    } on FormatException {
+      throw Exception('Invalid response from server.');
+    } catch (e) {
+      throw Exception(e.toString().replaceAll('Exception: ', ''));
+    }
   }
 }

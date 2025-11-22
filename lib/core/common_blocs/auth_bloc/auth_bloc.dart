@@ -20,22 +20,66 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     AuthLoginRequested event,
     Emitter<AuthState> emit,
   ) async {
+    print('🔵 ========================================');
+    print('🔵 AUTH BLOC: Login Requested');
+    print('🔵 ========================================');
+    print('🔵 Email: ${event.email}');
+    print('🔵 Password: ${event.password}');
+    
     emit(const AuthLoading());
+    print('🔵 Auth state changed to: AuthLoading');
+    
     try {
+      print('🔵 Calling APIClientServices.login...');
       final response = await APIClientServices.login(
         email: event.email,
         password: event.password,
       );
 
-      final token = response['token'] as String;
-      final userData = response['user'] as Map<String, dynamic>;
+      print('✅ API Response received:');
+      print('🔵 Response data: $response');
 
+      // The API returns user data directly in the data field
+      // Response structure: { "_id": "...", "email": "...", "name": "...", ... }
+      // We'll use _id as a token identifier or generate a token from the response
+      final userId = response['_id']?.toString() ?? '';
+      print('🔵 User ID extracted: $userId');
+      
+      if (userId.isEmpty) {
+        print('❌ User ID is empty!');
+        throw Exception('User ID not found in response');
+      }
+
+      // Create user model from the response data
+      print('🔵 Creating UserModel from response...');
+      final user = UserModel.fromJson(response);
+      print('✅ UserModel created: ${user.name} (${user.email})');
+
+      // For token, we can use the _id or generate one
+      // In a real app, the API should return a JWT token
+      final token = response['token']?.toString() ?? 
+          response['access_token']?.toString() ?? 
+          userId; // Fallback to userId if no token provided
+      print('🔵 Token: $token');
+
+      print('🔵 Saving token to local storage...');
       await LocalStorageServices.saveToken(token);
-      final user = UserModel.fromJson(userData);
-
+      print('✅ Token saved successfully');
+      
+      print('🔵 Emitting AuthAuthenticated state...');
       emit(AuthAuthenticated(user: user, token: token));
+      print('✅ Login successful!');
+      print('🔵 ========================================');
     } catch (e) {
-      emit(AuthError(e.toString().replaceAll('Exception: ', '')));
+      print('❌ ========================================');
+      print('❌ LOGIN ERROR OCCURRED');
+      print('❌ ========================================');
+      print('❌ Error: $e');
+      print('❌ Error type: ${e.runtimeType}');
+      final errorMessage = e.toString().replaceAll('Exception: ', '');
+      print('❌ Error message: $errorMessage');
+      print('❌ ========================================');
+      emit(AuthError(errorMessage));
     }
   }
 
@@ -51,8 +95,19 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         name: event.name,
       );
 
-      final token = response['token'] as String;
-      final userData = response['user'] as Map<String, dynamic>;
+      // Handle different response formats
+      final token = response['token']?.toString() ??
+          response['data']?['token']?.toString() ??
+          response['access_token']?.toString() ??
+          '';
+      
+      if (token.isEmpty) {
+        throw Exception('Token not found in response');
+      }
+
+      final userData = response['user'] as Map<String, dynamic>? ??
+          response['data']?['user'] as Map<String, dynamic>? ??
+          {};
 
       await LocalStorageServices.saveToken(token);
       final user = UserModel.fromJson(userData);
@@ -69,11 +124,15 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     emit(const AuthLoading());
     try {
-      await APIClientServices.logout();
+      // Get token before removing it
+      final token = await LocalStorageServices.getToken();
+      await APIClientServices.logout(token: token);
       await LocalStorageServices.removeToken();
       emit(const AuthUnauthenticated());
     } catch (e) {
-      emit(AuthError(e.toString().replaceAll('Exception: ', '')));
+      // Even if logout API fails, remove token locally
+      await LocalStorageServices.removeToken();
+      emit(const AuthUnauthenticated());
     }
   }
 

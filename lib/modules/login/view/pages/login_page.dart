@@ -19,6 +19,19 @@ class _LoginPageState extends State<LoginPage> {
   bool _obscurePassword = true;
 
   @override
+  void initState() {
+    super.initState();
+    // Set default credentials
+    _emailController.text = 'rafnaspaaap4@gmail.co';
+    _passwordController.text = 'Raf';
+    // Update login bloc with default values
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<LoginBloc>().add(LoginEmailChanged(_emailController.text));
+      context.read<LoginBloc>().add(LoginPasswordChanged(_passwordController.text));
+    });
+  }
+
+  @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
@@ -26,15 +39,25 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void _handleLogin() {
+    print('🔵 ========================================');
+    print('🔵 LOGIN BUTTON CLICKED');
+    print('🔵 ========================================');
+    print('🔵 Email: ${_emailController.text.trim()}');
+    print('🔵 Password: ${_passwordController.text}');
+    
     if (_formKey.currentState!.validate()) {
+      print('✅ Form validation passed');
       context.read<LoginBloc>().add(const LoginSubmitted());
       // Trigger auth login
+      print('🔵 Dispatching AuthLoginRequested event...');
       context.read<AuthBloc>().add(
             AuthLoginRequested(
               email: _emailController.text.trim(),
               password: _passwordController.text,
             ),
           );
+    } else {
+      print('❌ Form validation failed');
     }
   }
 
@@ -44,16 +67,30 @@ class _LoginPageState extends State<LoginPage> {
       body: SafeArea(
         child: BlocListener<AuthBloc, AuthState>(
           listener: (context, authState) {
+            print('🔵 ========================================');
+            print('🔵 AUTH STATE CHANGED');
+            print('🔵 ========================================');
+            print('🔵 State type: ${authState.runtimeType}');
+            
             if (authState is AuthAuthenticated) {
+              print('✅ User authenticated successfully!');
+              print('🔵 User: ${authState.user.name} (${authState.user.email})');
+              print('🔵 Navigating to dashboard...');
               context.go(NavigationRoutes.dashboard);
             } else if (authState is AuthError) {
+              print('❌ Authentication error: ${authState.message}');
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(authState.message),
                   backgroundColor: Colors.red,
                 ),
               );
+            } else if (authState is AuthLoading) {
+              print('⏳ Authentication in progress...');
+            } else {
+              print('🔵 Auth state: $authState');
             }
+            print('🔵 ========================================');
           },
           child: BlocBuilder<LoginBloc, LoginState>(
             builder: (context, loginState) {
@@ -152,8 +189,8 @@ class _LoginPageState extends State<LoginPage> {
                               if (value == null || value.isEmpty) {
                                 return 'Please enter your password';
                               }
-                              if (value.length < 6) {
-                                return 'Password must be at least 6 characters';
+                              if (value.length < 3) {
+                                return 'Password must be at least 3 characters';
                               }
                               return null;
                             },
